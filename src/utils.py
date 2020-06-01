@@ -4,6 +4,9 @@ import sys
 import numpy as np
 import pandas as pd
 
+import torch
+from torch.utils.data import Dataset
+
 
 def pairwise_transform(documents, relevants):
     """
@@ -83,6 +86,66 @@ def construct_pairwise(queries, features):
         y_trans.append(y)
         
     return np.vstack(X_trans), np.hstack(y_trans)
+
+
+LOGS_THRESHOLD = torch.FloatTensor([-100])
+def xlogy(x, y):
+    z = torch.zeros(())
+    if x.device.type == "cuda":
+        z.to(x.get_device())
+        LOGS_THRESHOLD.to(x.get_device())
+
+    logs = torch.log(y)
+    logs = torch.where(
+        logs < LOGS_THRESHOLD,
+        LOGS_THRESHOLD,
+        logs
+    )
+    return x * torch.where(x == 0., z, logs)
+
+
+def to_categorical(target, K):
+    N = target.size(0)
+
+    target_cat = torch.zeros(N, K, dtype=torch.float32, device=target.device)
+    target_cat[torch.arange(N, dtype=torch.int64), target] = 1
+
+    return target_cat
+
+
+class RankDataset(Dataset):
+    def __init__(
+        self,
+        documents,
+        device,
+        feature_columns,
+        target_column='relevent_val',
+        query_column='qid',
+    ):
+        super(RankDataset, self).__init__()
+
+        self.nclasses = documents[target_column].nunique()
+        data = [table for qid, table in documents.groupby(query_column)]
+        self.data = []
+        self.target = []
+        for table in data:
+            self.data.append(
+                torch.FloatTensor(table[feature_columns].values, device=device)
+            )
+            self.target.append(
+                torch.FloatTensor(table[target_column].values, device=device)
+            )
+
+        self.nfeatures = feature_columns.shape[0]
+
+    def __getitem__(self, index):
+        return self.data[index], self.target[index]
+
+    def __len__(self):
+        return len(self.data)
+
+    def ndim(self):
+        return self.nfeatures
 
 
 def group_counts(arr):
