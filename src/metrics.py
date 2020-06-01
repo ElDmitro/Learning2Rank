@@ -1,106 +1,80 @@
 import numpy as np
-
-from utils import group_offsets
-
-
-class Scorer(object):
-    def __init__(self, score_func, **kwargs):
-        self.score_func = score_func
-        self.kwargs = kwargs
-
-    def __call__(self, *args):
-        return self.score_func(*args, **self.kwargs)
+from utils import xlogy
 
 
-# Precision
-#
-def _p_score(y_true, y_pred, k=None):
-    order = np.argsort(-y_pred)
-    y_true = np.take(y_true, order[:k])
-    return np.sum(y_true > 0) / len(y_true)
+def cross_entropy(prediction, target):
+    return -xlogy(target, prediction).sum()
 
 
-def p_score(y_true, y_pred, qid, k=None):
-    return np.array([_p_score(y_true[a:b], y_pred[a:b], k=k) for a, b in group_offsets(qid)])
+g = lambda x: 2 ** x - 1
+d = lambda i: 1 / np.log(i + 1)
+def _dcg_k(ranked_target, k=None):
+    if k is None:
+        k = ranked_target.shape[0]
+
+    ranked_target = ranked_target[:k]
+    return np.sum(
+        g(ranked_target) * d(np.arange(1, k + 1))
+    )
 
 
-class PScorer(Scorer):
-    def __init__(self, **kwargs):
-        super(PScorer, self).__init__(p_score, **kwargs)
+def _ndcg_k(ranked_target, k=None):
+    dcg_value = _dcg_k(ranked_target, k)
+
+    ideal_dcg = _dcg_k(
+        np.sort(ranked_target)[::-1],
+        k
+    )
+
+    if ideal_dcg == 0:
+        return 1
+    return dcg_value / ideal_dcg
 
 
-# AP (Average Precision)
-#
-def _ap_score(y_true, y_pred):
-    order = np.argsort(-y_pred)
-    y_true = np.take(y_true, order)
-    pos = 1 + np.where(y_true > 0)[0]
-    n_rels = 1 + np.arange(len(pos))
-    return np.mean(n_rels / pos) if len(pos) > 0 else 0
+def dcg_k(ranked_target_list, k=None):
+    scores = []
+    for ranked_target in ranked_target_list:
+
+        scores.append(
+            _dcg_k(ranked_target, k)
+        )
+
+    return np.mean(scores)
 
 
-def ap_score(y_true, y_pred, qid):
-    return np.array([_ap_score(y_true[a:b], y_pred[a:b]) for a, b in group_offsets(qid)])
+def ndcg_k(ranked_target_list, k=None):
+    scores = []
+    for ranked_target in ranked_target_list:
+
+        scores.append(
+            _ndcg_k(ranked_target, k)
+        )
+
+    return np.mean(scores)
 
 
-class APScorer(Scorer):
-    def __init__(self):
-        super(APScorer, self).__init__(ap_score)
+def _precision_at_k(ranked_target):
+    return np.cumsum(ranked_target / 2) / np.arange(1, ranked_target.shape[0] + 1)
 
 
-# DCG/nDCG (Normalized Discounted Cumulative Gain)
-#
-def _burges_dcg(y_true, y_pred, k=None):
-    # order = np.argsort(y_pred)[::-1]
-    order = np.argsort(-y_pred)
-    y_true = np.take(y_true, order[:k])
-    gain = 2 ** y_true - 1
-    discounts = np.log2(np.arange(len(gain)) + 2)
-    return np.sum(gain / discounts)
+def _aprecision_at_k(ranked_target, k=None):
+    if k is None:
+        k = ranked_target.shape[0]
+
+    precisions = _precision_at_k(ranked_target)[:k]
+    ranked_target = ranked_target[:k]
+
+    result = ranked_target * 1. / ranked_target.sum()
+
+    return np.sum(result * precisions)
 
 
-def _trec_dcg(y_true, y_pred, k=None):
-    order = np.argsort(-y_pred)
-    y_true = np.take(y_true, order[:k])
-    gain = y_true
-    discounts = np.log2(np.arange(len(gain)) + 2)
-    return np.sum(gain / discounts)
+def map_k(ranked_target_list, k=None):
+    scores = []
+    for ranked_target in ranked_target_list:
 
+        scores.append(
+            _aprecision_at_k(ranked_target, k)
+        )
 
-def _dcg_score(y_true, y_pred, qid, k=None, dcg_func=None):
-    assert dcg_func is not None
-    y_true = np.maximum(y_true, 0)
-    return np.array([dcg_func(y_true[a:b], y_pred[a:b], k=k) for a, b in group_offsets(qid)])
-
-
-def _ndcg_score(y_true, y_pred, qid, k=None, dcg_func=None):
-    assert dcg_func is not None
-    y_true = np.maximum(y_true, 0)
-    dcg = _dcg_score(y_true, y_pred, qid, k=k, dcg_func=dcg_func)
-    idcg = np.array([dcg_func(np.sort(y_true[a:b]), np.arange(0, b - a), k=k)
-                     for a, b in group_offsets(qid)])
-    assert (dcg <= idcg).all()
-    idcg[idcg == 0] = 1
-    return dcg / idcg
-
-
-def dcg_score(y_true, y_pred, qid, k=None, version='burges'):
-    assert version in ['burges', 'trec']
-    dcg_func = _burges_dcg if version == 'burges' else _trec_dcg
-    return _dcg_score(y_true, y_pred, qid, k=k, dcg_func=dcg_func)
-
-
-def ndcg_score(y_true, y_pred, qid, k=None, version='burges'):
-    assert version in ['burges', 'trec']
-    dcg_func = _burges_dcg if version == 'burges' else _trec_dcg
-    return _ndcg_score(y_true, y_pred, qid, k=k, dcg_func=dcg_func)
-
-
-class DCGScorer(Scorer):
-    def __init__(self, **kwargs):
-        super(DCGScorer, self).__init__(dcg_score, **kwargs)
-
-
-class NDCGScorer(Scorer):
-    def __init__(self, **kwargs):
-        super(NDCGScorer, self).__init__(ndcg_score, **kwargs)
+    return np.mean(scores)
