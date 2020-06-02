@@ -1,6 +1,12 @@
 import numpy as np
 
-from ..utils import group_offsets
+
+def group_offsets(arr):
+    """Return a sequence of start/end offsets for the value subgroups in the input"""
+    d = np.ones(arr.size, dtype=int)
+    d[1:] = (arr[:-1] != arr[1:]).astype(int)
+    idx = np.where(np.append(d, 1))[0]
+    return zip(idx, idx[1:])
 
 
 class Scorer(object):
