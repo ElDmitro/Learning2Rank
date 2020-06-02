@@ -78,3 +78,15 @@ def map_k(ranked_target_list, k=None):
         )
 
     return np.mean(scores)
+
+
+def mrr(ranked_target_list):
+    total_score = 0
+    for ranked_target in ranked_target_list:
+        score = ranked_target.argmax()
+        if ranked_target.max() != 2.:
+            score = ranked_target.shape[0]
+
+        total_score += score
+
+    return total_score / len(ranked_target_list)
