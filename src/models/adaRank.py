@@ -8,7 +8,7 @@ import sys
 
 from sklearn.utils import check_X_y
 
-from _metrics import NDCGScorer
+from .adaMetrics import NDCGScorer
 
 
 class AdaRank(sklearn.base.BaseEstimator):
@@ -114,5 +114,5 @@ class AdaRank(sklearn.base.BaseEstimator):
 
     def predict(self, X, qid):
         """Make predictions"""
-        return np.dot(X.toarray(), self.coef_)
+        return np.dot(X, self.coef_)
 
