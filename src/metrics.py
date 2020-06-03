@@ -7,7 +7,7 @@ def cross_entropy(prediction, target):
 
 
 g = lambda x: 2 ** x - 1
-d = lambda i: 1 / np.log(i + 1)
+d = lambda i: 1 / np.log2(i + 1)
 def _dcg_k(ranked_target, k=None):
     if k is None:
         k = ranked_target.shape[0]
