@@ -88,6 +88,21 @@ def construct_pairwise(queries, features):
     return np.vstack(X_trans), np.hstack(y_trans)
 
 
+def construct_listwise(
+    documents,
+    feature_columns,
+    target_column='relevent_val',
+    qid_column='qid',
+):
+    qids, docs = zip(*documents.groupby(qid_column))
+    
+    data = [table[feature_columns].values for table in docs]
+    target = [table[target_column].values for table in docs]
+    qids = [np.array([qid] * table.shape[0]) for qid, table in zip(qids, docs)]
+    
+    return np.hstack(qids), np.vstack(data), np.hstack(target)
+
+
 LOGS_THRESHOLD = torch.FloatTensor([-100])
 def xlogy(x, y):
     z = torch.zeros(())
