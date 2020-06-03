@@ -4,7 +4,7 @@ import pickle
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 
-from supplementary_code_direct_ranker.helpers import nDCG_cls
+from src.models.supplementary_code_direct_ranker.helpers import nDCG_cls
 
 import time
 from tensorflow.python.framework import ops
